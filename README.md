@@ -46,30 +46,32 @@ Korean Output
 ```
 noonchi-translator/
 ├── backend/
-│   ├── nlp/                        # NLP exploration and labs
-│   │   ├── day1_tokenization_lab.py
-│   │   ├── day4_lab.py
-│   │   ├── day5_en-kr.py
-│   │   └── day5_lab.py
-│   ├── check_installation.py
+│   ├── api/                        # Working prototype (Claude API + FastAPI)
+│   │   ├── app.py                  # FastAPI server
+│   │   ├── agents/claude_agent.py  # Translation agent + FormalityResolver
+│   │   ├── models/schemas.py       # Pydantic request/response models
+│   │   ├── session_manager.py
+│   │   ├── config.py
+│   │   └── requirements.txt
+│   ├── formality/                  # FormalityResolver (standalone module, planned)
+│   ├── data_pipeline/              # Corpus labeling pipeline (planned)
+│   ├── model/                      # mBART-50 fine-tuning (planned)
+│   ├── evaluation/                 # BLEU / chrF / formality accuracy (planned)
 │   └── requirements.txt
-├── backend-agent/                  # Working prototype (Claude API)
-│   ├── app.py                      # FastAPI server
-│   ├── agents/claude_agent.py      # Translation agent
-│   ├── session_manager.py
-│   ├── models/schemas.py
-│   └── requirements.txt
-├── data/
-│   └── relationship_formality_map.json
-├── docs/
-│   ├── ARCHITECTURE_DECISION.md    # Traditional NLP engine design
-│   └── IMPLEMENTATION_PLAN.md      # mBART pipeline plan
-├── frontend/                       # React UI
+├── frontend/                       # React + Vite UI
 │   └── src/
 │       ├── App.jsx
 │       ├── components/
 │       └── services/
-└── tests/
+├── data/
+│   └── relationship_formality_map.json
+├── tests/
+│   └── test_api.py
+├── docs/
+│   ├── ARCHITECTURE_DECISION.md
+│   └── IMPLEMENTATION_PLAN.md
+├── .env.example
+└── pyproject.toml
 ```
 
 ---
@@ -134,10 +136,10 @@ Tokenizer expanded with `<formal>`, `<polite>`, `<casual>` conditioning tokens. 
 
 ### Backend prototype
 ```bash
-cd backend-agent
+cp .env.example .env          # add your ANTHROPIC_API_KEY
+cd backend/api
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-cp ../.env.example .env  # add ANTHROPIC_API_KEY
 python app.py
 ```
 

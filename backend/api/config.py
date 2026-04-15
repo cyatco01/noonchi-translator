@@ -9,8 +9,8 @@ from typing import Optional
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-env_path = Path(__file__).parent.parent / '.env'
+# Load environment variables from .env file at project root
+env_path = Path(__file__).parent.parent.parent / '.env'
 load_dotenv(dotenv_path=env_path)
 
 
@@ -30,10 +30,10 @@ class Settings:
     API_PORT: int = int(os.getenv('API_PORT', '8000'))
 
     # CORS Configuration
-    CORS_ORIGINS: list = os.getenv('CORS_ORIGINS', 'http://localhost:3000').split(',')
+    CORS_ORIGINS: list = os.getenv('CORS_ORIGINS', 'http://localhost:5173').split(',')
 
     # Paths
-    PROJECT_ROOT: Path = Path(__file__).parent.parent
+    PROJECT_ROOT: Path = Path(__file__).parent.parent.parent
     DATA_DIR: Path = PROJECT_ROOT / 'data'
 
     def validate(self) -> tuple[bool, Optional[str]]:
