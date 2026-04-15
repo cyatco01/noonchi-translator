@@ -1,0 +1,61 @@
+"""
+Configuration management for Noonchi Translator backend.
+
+Loads environment variables and provides centralized config access.
+"""
+
+import os
+from typing import Optional
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+env_path = Path(__file__).parent.parent / '.env'
+load_dotenv(dotenv_path=env_path)
+
+
+class Settings:
+    """Application settings loaded from environment variables."""
+
+    # API Keys
+    ANTHROPIC_API_KEY: str = os.getenv('ANTHROPIC_API_KEY', '')
+
+    # Claude Model Configuration
+    CLAUDE_MODEL: str = os.getenv('CLAUDE_MODEL', 'claude-3-5-sonnet-20241022')
+    MAX_TOKENS: int = int(os.getenv('MAX_TOKENS', '4096'))
+    TEMPERATURE: float = float(os.getenv('TEMPERATURE', '0.3'))  # Lower temp for consistent translations
+
+    # API Configuration
+    API_HOST: str = os.getenv('API_HOST', '0.0.0.0')
+    API_PORT: int = int(os.getenv('API_PORT', '8000'))
+
+    # CORS Configuration
+    CORS_ORIGINS: list = os.getenv('CORS_ORIGINS', 'http://localhost:3000').split(',')
+
+    # Paths
+    PROJECT_ROOT: Path = Path(__file__).parent.parent
+    DATA_DIR: Path = PROJECT_ROOT / 'data'
+
+    def validate(self) -> tuple[bool, Optional[str]]:
+        """
+        Validate required settings.
+
+        Returns:
+            tuple: (is_valid, error_message)
+        """
+        if not self.ANTHROPIC_API_KEY:
+            return False, "ANTHROPIC_API_KEY not set. Please add it to your .env file."
+
+        if not self.DATA_DIR.exists():
+            return False, f"Data directory not found: {self.DATA_DIR}"
+
+        return True, None
+
+
+# Global settings instance
+settings = Settings()
+
+
+def get_settings() -> Settings:
+    """Get the global settings instance."""
+    return settings

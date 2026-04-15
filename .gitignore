@@ -29,6 +29,10 @@ env/
 ENV/
 env.bak/
 venv.bak/
+noonchi-venv/
+
+# Local documents
+*.docx
 
 # PyCharm
 .idea/

@@ -1,0 +1,36 @@
+# Noonchi Translator - Backend Dependencies
+# Python 3.9+
+
+# Core NLP Libraries
+spacy>=3.0.0
+konlpy>=0.6.0
+korean-conjugator>=0.2.0
+
+# Web Framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+python-multipart>=0.0.6
+
+# HTTP & API Integration
+requests>=2.31.0
+httpx>=0.25.0
+
+# Environment & Configuration
+python-dotenv>=1.0.0
+
+# Data Processing
+pandas>=2.0.0
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+
+# Development
+black>=23.0.0
+flake8>=6.0.0
+
+# Notes:
+# - KoNLPy requires Java JDK installed on your system
+# - Mecab requires system-level installation (see README)
+# - For spaCy, also run: python -m spacy download en_core_web_sm

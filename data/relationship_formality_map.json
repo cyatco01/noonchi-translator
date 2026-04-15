@@ -1,0 +1,177 @@
+{
+  "relationships": {
+    "boss": {
+      "formality_level": "hasipsioche",
+      "korean_name": "하십시오체",
+      "description": "Most formal polite - for superiors, elders in professional settings",
+      "example_ending": "-습니다/-십니까",
+      "honorific_vocab": true
+    },
+    "elder": {
+      "formality_level": "hasipsioche",
+      "korean_name": "하십시오체",
+      "description": "Most formal polite - for elders and respected individuals",
+      "example_ending": "-습니다/-십니까",
+      "honorific_vocab": true
+    },
+    "customer": {
+      "formality_level": "hasipsioche",
+      "korean_name": "하십시오체",
+      "description": "Most formal polite - for customers and clients",
+      "example_ending": "-습니다/-십니까",
+      "honorific_vocab": true
+    },
+    "teacher": {
+      "formality_level": "hasipsioche",
+      "korean_name": "하십시오체",
+      "description": "Most formal polite - for teachers and instructors",
+      "example_ending": "-습니다/-십니까",
+      "honorific_vocab": true
+    },
+    "colleague": {
+      "formality_level": "haeyoche",
+      "korean_name": "해요체",
+      "description": "Polite informal - most common everyday politeness for coworkers",
+      "example_ending": "-아요/-어요",
+      "honorific_vocab": false
+    },
+    "acquaintance": {
+      "formality_level": "haeyoche",
+      "korean_name": "해요체",
+      "description": "Polite informal - for people you don't know well",
+      "example_ending": "-아요/-어요",
+      "honorific_vocab": false
+    },
+    "friend": {
+      "formality_level": "haeche",
+      "korean_name": "해체",
+      "description": "Casual informal - for close friends of similar age",
+      "example_ending": "-아/-어",
+      "honorific_vocab": false
+    },
+    "younger_friend": {
+      "formality_level": "haeche",
+      "korean_name": "해체",
+      "description": "Casual informal - for younger friends",
+      "example_ending": "-아/-어",
+      "honorific_vocab": false
+    },
+    "younger_sibling": {
+      "formality_level": "haeche",
+      "korean_name": "해체",
+      "description": "Casual informal - for younger siblings",
+      "example_ending": "-아/-어",
+      "honorific_vocab": false
+    },
+    "child": {
+      "formality_level": "haeche",
+      "korean_name": "해체",
+      "description": "Casual informal - for children",
+      "example_ending": "-아/-어",
+      "honorific_vocab": false
+    }
+  },
+  "formality_levels": {
+    "hasipsioche": {
+      "level": 1,
+      "name": "하십시오체",
+      "english": "Formal Polite",
+      "usage": "Superiors, elders, customers, formal situations",
+      "key_features": [
+        "Honorific verb forms (드시다 for 먹다)",
+        "Subject honorific -시-",
+        "Formal endings: -습니다, -십니까",
+        "Honorific vocabulary throughout"
+      ],
+      "example": "드시고 싶으십니까?"
+    },
+    "haoche": {
+      "level": 2,
+      "name": "하오체",
+      "english": "Formal Neutral",
+      "usage": "Archaic, rarely used in modern Korean",
+      "key_features": [
+        "Formal but less polite than hasipsioche",
+        "Endings: -오/-소",
+        "Historical/literary use",
+        "Not commonly used in conversation"
+      ],
+      "example": "먹고 싶소?",
+      "note": "Archaic - not implemented in MVP"
+    },
+    "hageche": {
+      "level": 3,
+      "name": "하게체",
+      "english": "Semi-Formal",
+      "usage": "Archaic, used to younger adults in old texts",
+      "key_features": [
+        "Semi-formal address",
+        "Endings: -네/-게",
+        "Historical/literary use",
+        "Between formal and informal"
+      ],
+      "example": "먹고 싶은가?",
+      "note": "Archaic - not implemented in MVP"
+    },
+    "haerache": {
+      "level": 4,
+      "name": "해라체",
+      "english": "Plain Form",
+      "usage": "Writing, narration, speaking to children, close friends",
+      "key_features": [
+        "Dictionary/plain form",
+        "Endings: -다/-라",
+        "Used in writing and commands",
+        "Direct and authoritative"
+      ],
+      "example": "먹고 싶다",
+      "note": "Used in writing/narration - may implement later"
+    },
+    "haeyoche": {
+      "level": 5,
+      "name": "해요체",
+      "english": "Polite Informal",
+      "usage": "Default politeness, colleagues, acquaintances, most common",
+      "key_features": [
+        "Standard verb forms",
+        "Polite endings: -아요/-어요",
+        "Respectful but not overly formal",
+        "Most common in daily conversation"
+      ],
+      "example": "먹고 싶어요?"
+    },
+    "haeche": {
+      "level": 6,
+      "name": "해체",
+      "english": "Casual Informal",
+      "usage": "Close friends, family, younger people",
+      "key_features": [
+        "Standard verb forms",
+        "Casual endings: -아/-어",
+        "No honorifics needed",
+        "Relaxed and friendly"
+      ],
+      "example": "먹고 싶어?"
+    },
+    "honorific": {
+      "level": 7,
+      "name": "존댓말 (Honorific Forms)",
+      "english": "Honorific Vocabulary & Grammar",
+      "usage": "Special vocabulary and particles showing respect",
+      "key_features": [
+        "Special honorific verbs (드시다, 주무시다, 계시다)",
+        "Subject honorific marker -시-",
+        "Honorific nouns (진지, 연세)",
+        "Combined with hasipsioche for maximum respect"
+      ],
+      "example": "진지 드시고 싶으십니까?",
+      "note": "Applied as vocabulary layer on top of hasipsioche"
+    }
+  },
+  "mvp_implementation": {
+    "included_levels": ["hasipsioche", "haeyoche", "haeche"],
+    "future_levels": ["haoche", "hageche", "haerache"],
+    "honorific_layer": "Implemented within hasipsioche level",
+    "rationale": "Modern Korean primarily uses these 3 levels. Archaic forms (haoche, hageche) rarely used. Haerache mainly for writing."
+  }
+}
