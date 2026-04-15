@@ -1,10 +1,11 @@
 # Noonchi Translator - Backend Dependencies
 # Python 3.9+
 
-# Core NLP Libraries
-spacy>=3.0.0
+# Korean NLP
 konlpy>=0.6.0
-korean-conjugator>=0.2.0
+
+# English NLP
+spacy>=3.0.0
 
 # Web Framework
 fastapi>=0.104.0
@@ -12,15 +13,23 @@ uvicorn[standard]>=0.24.0
 pydantic>=2.0.0
 python-multipart>=0.0.6
 
-# HTTP & API Integration
+# HTTP
 requests>=2.31.0
-httpx>=0.25.0
 
-# Environment & Configuration
+# Environment
 python-dotenv>=1.0.0
 
 # Data Processing
 pandas>=2.0.0
+
+# Translation Model (mBART-50 fine-tuning)
+torch>=2.0.0
+transformers>=4.35.0
+datasets>=2.14.0
+sentencepiece>=0.1.99
+
+# Evaluation
+sacrebleu>=2.3.0
 
 # Testing
 pytest>=7.4.0
@@ -31,6 +40,7 @@ black>=23.0.0
 flake8>=6.0.0
 
 # Notes:
-# - KoNLPy requires Java JDK installed on your system
+# - KoNLPy requires Java JDK: https://konlpy.org/en/latest/install/
 # - Mecab requires system-level installation (see README)
-# - For spaCy, also run: python -m spacy download en_core_web_sm
+# - spaCy English model: python -m spacy download en_core_web_sm
+# - GPU strongly recommended for mBART fine-tuning
