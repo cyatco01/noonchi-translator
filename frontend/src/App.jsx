@@ -3,18 +3,26 @@ import { getAvailableBackends } from './config/backends';
 import { setContext, translate } from './services/api';
 import FormalityBadge from './components/FormalityBadge';
 
-// Relationship options
+// Relationship options — must match backend RelationshipType enum
 const RELATIONSHIPS = [
-  { value: 'boss', label: 'Boss', description: 'Your superior at work' },
-  { value: 'elder', label: 'Elder', description: 'Older respected person' },
-  { value: 'customer', label: 'Customer', description: 'Client or customer' },
-  { value: 'teacher', label: 'Teacher', description: 'Instructor or mentor' },
-  { value: 'colleague', label: 'Colleague', description: 'Coworker or peer' },
-  { value: 'acquaintance', label: 'Acquaintance', description: 'Someone you know casually' },
-  { value: 'friend', label: 'Friend', description: 'Close friend of similar age' },
-  { value: 'younger_friend', label: 'Younger Friend', description: 'Younger friend' },
-  { value: 'younger_sibling', label: 'Younger Sibling', description: 'Younger sibling' },
-  { value: 'child', label: 'Child', description: 'Child or young person' }
+  { value: 'boss',         label: 'Boss',         description: 'Your superior at work' },
+  { value: 'elder',        label: 'Elder',         description: 'Older respected person' },
+  { value: 'professor',    label: 'Professor',     description: 'Instructor or academic mentor' },
+  { value: 'colleague',    label: 'Colleague',     description: 'Coworker at a similar level' },
+  { value: 'peer',         label: 'Peer',          description: 'Same-age acquaintance or classmate' },
+  { value: 'subordinate',  label: 'Subordinate',   description: 'Someone junior to you at work' },
+  { value: 'friend',       label: 'Friend',        description: 'Close friend' },
+  { value: 'acquaintance', label: 'Acquaintance',  description: 'Someone you know casually' },
+  { value: 'stranger',     label: 'Stranger',      description: 'Someone you don\'t know' },
+];
+
+// Setting options — must match backend SettingType enum
+const SETTINGS = [
+  { value: 'workplace', label: 'Workplace',  description: 'Office or professional environment' },
+  { value: 'academic',  label: 'Academic',   description: 'School, university, or study setting' },
+  { value: 'social',    label: 'Social',     description: 'Party, gathering, or casual outing' },
+  { value: 'public',    label: 'Public',     description: 'Street, transport, or public space' },
+  { value: 'intimate',  label: 'Intimate',   description: 'Home or close personal setting' },
 ];
 
 function App() {
@@ -22,7 +30,8 @@ function App() {
   const [selectedMethod, setSelectedMethod] = useState('agent');
   const [sessionId, setSessionId] = useState(null);
   const [relationship, setRelationship] = useState('');
-  const [situation, setSituation] = useState('');
+  const [ageDifferential, setAgeDifferential] = useState(0);
+  const [setting, setSetting] = useState('');
   const [formality, setFormality] = useState(null);
   const [formalityDescription, setFormalityDescription] = useState('');
   const [inputText, setInputText] = useState('');
@@ -39,16 +48,20 @@ function App() {
       setError('Please select a relationship');
       return;
     }
+    if (!setting) {
+      setError('Please select a setting');
+      return;
+    }
 
     setLoading(true);
     setError(null);
 
-    const result = await setContext(relationship, situation, selectedMethod);
+    const result = await setContext(relationship, ageDifferential, setting, selectedMethod);
 
     if (result.success) {
       setSessionId(result.data.session_id);
-      setFormality(result.data.formality_level);
-      setFormalityDescription(result.data.formality_description);
+      setFormality(result.data.formality_token);
+      setFormalityDescription(result.data.message);
       setContextSet(true);
     } else {
       setError(result.error);
@@ -74,7 +87,7 @@ function App() {
         id: Date.now(),
         original: result.data.original_text,
         translated: result.data.translated_text,
-        formality: result.data.formality_level,
+        formality: result.data.formality_token,
         explanation: result.data.explanation,
         romanization: result.data.romanization
       }]);
@@ -96,7 +109,8 @@ function App() {
   const handleResetContext = () => {
     setSessionId(null);
     setRelationship('');
-    setSituation('');
+    setAgeDifferential(0);
+    setSetting('');
     setFormality(null);
     setContextSet(false);
     setTranslations([]);
@@ -183,14 +197,37 @@ function App() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Situation (optional)
+                    Setting *
+                  </label>
+                  <select
+                    value={setting}
+                    onChange={(e) => setSetting(e.target.value)}
+                    disabled={contextSet}
+                    className="select-field"
+                  >
+                    <option value="">Select setting...</option>
+                    {SETTINGS.map(s => (
+                      <option key={s.value} value={s.value}>
+                        {s.label} — {s.description}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Age Difference
+                    <span className="ml-1 font-normal text-gray-500">
+                      (negative = you are younger, positive = you are older)
+                    </span>
                   </label>
                   <input
-                    type="text"
-                    value={situation}
-                    onChange={(e) => setSituation(e.target.value)}
+                    type="number"
+                    value={ageDifferential}
+                    onChange={(e) => setAgeDifferential(parseInt(e.target.value) || 0)}
                     disabled={contextSet}
-                    placeholder="e.g., business meeting, casual lunch"
+                    min="-50"
+                    max="50"
                     className="input-field"
                   />
                 </div>

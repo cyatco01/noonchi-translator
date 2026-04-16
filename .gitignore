@@ -87,6 +87,14 @@ Thumbs.db
 logs/
 *.log
 
+# Data — raw corpora, derived datasets, and augmentation checkpoints (do not commit)
+data/raw/
+data/checkpoints/
+data/train.tsv
+data/train_split.tsv
+data/val.tsv
+data/test.tsv
+
 # Temporary files
 *.tmp
 *.temp

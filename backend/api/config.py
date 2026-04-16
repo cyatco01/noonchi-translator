@@ -21,7 +21,7 @@ class Settings:
     ANTHROPIC_API_KEY: str = os.getenv('ANTHROPIC_API_KEY', '')
 
     # Claude Model Configuration
-    CLAUDE_MODEL: str = os.getenv('CLAUDE_MODEL', 'claude-3-5-sonnet-20241022')
+    CLAUDE_MODEL: str = os.getenv('CLAUDE_MODEL', 'claude-sonnet-4-6')
     MAX_TOKENS: int = int(os.getenv('MAX_TOKENS', '4096'))
     TEMPERATURE: float = float(os.getenv('TEMPERATURE', '0.3'))  # Lower temp for consistent translations
 

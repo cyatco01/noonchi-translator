@@ -5,17 +5,17 @@
  */
 
 const FORMALITY_INFO = {
-  hasipsioche: {
+  formal: {
     korean: '하십시오체',
     english: 'Formal Polite',
     className: 'badge-formal'
   },
-  haeyoche: {
+  polite: {
     korean: '해요체',
     english: 'Polite Informal',
     className: 'badge-polite'
   },
-  haeche: {
+  casual: {
     korean: '해체',
     english: 'Casual',
     className: 'badge-casual'
