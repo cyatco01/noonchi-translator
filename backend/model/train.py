@@ -153,7 +153,7 @@ def train(data_path: str, output_dir: str, max_rows: int | None = None) -> None:
         args=training_args,
         train_dataset=train_ds,
         eval_dataset=val_ds,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         data_collator=data_collator,
         compute_metrics=compute_metrics,
     )
