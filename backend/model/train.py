@@ -73,6 +73,7 @@ TRAINING_ARGS = {
     "gradient_checkpointing": True,
     "predict_with_generate": True,
     "generation_max_length": 128,
+    "generation_num_beams": 1,  # greedy for training-time eval; Cell 8 uses full beams
     "dataloader_num_workers": 0,
 }
 
@@ -126,7 +127,9 @@ def train(data_path: str, output_dir: str, max_rows: int | None = None, resume: 
 
     train_ds = load_split(data_path, tokenizer, max_rows=max_rows)
     val_path = str(Path(data_path).parent / "val.tsv")
-    val_ds = load_split(val_path, tokenizer)
+    # 2000-row eval subset keeps each epoch eval under ~2 min on T4.
+    # Full eval runs in Cell 8 after training.
+    val_ds = load_split(val_path, tokenizer, max_rows=2000)
 
     logger.info(
         f"Dataset: {len(train_ds):,} train rows, {len(val_ds):,} val rows"

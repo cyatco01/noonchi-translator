@@ -11,8 +11,6 @@ Metrics:
 
 from sacrebleu.metrics import BLEU, CHRF
 
-from backend.data_pipeline.label import label_sentence
-
 
 def compute_chrf(hypotheses: list[str], references: list[str]) -> float:
     """Compute chrF score (primary translation quality metric)."""
@@ -37,6 +35,7 @@ def formality_accuracy(
 
     Applies the same morphological labeling pipeline used in data construction.
     """
+    from backend.data_pipeline.label import label_sentence  # lazy: needs Mecab, only used in Cell 8
     correct = 0
     for pred, label in zip(predictions, requested_labels):
         predicted_label = label_sentence(pred)
