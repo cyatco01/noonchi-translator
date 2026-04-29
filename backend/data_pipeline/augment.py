@@ -15,6 +15,7 @@ data). Two strategies balance the class distribution:
 
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Literal
 
@@ -154,63 +155,122 @@ def augment_by_llm(
         logger.info(f"[{target_label}] checkpoint already complete — skipping API calls")
         return collected[:target_count]
 
+    seen_ko: set[str] = {ko for _, ko, _ in collected}
+
     client = anthropic.Anthropic(api_key=api_key)
     description = _FORMALITY_DESCRIPTIONS[target_label]
 
-    system_prompt = (
-        "You are a Korean linguistics expert generating parallel English–Korean sentence "
-        "pairs for a machine translation training corpus.\n\n"
-        "OUTPUT FORMAT — respond with ONLY a numbered list, one pair per line:\n"
-        "1. English sentence | Korean sentence\n"
-        "2. English sentence | Korean sentence\n"
-        "...\n\n"
-        "RULES:\n"
-        "- Each Korean sentence MUST end with the correct speech-level morpheme.\n"
-        "- Vary the topics: everyday life, work, food, travel, emotions, requests.\n"
-        "- Keep sentences short to medium length (5–15 words in English).\n"
-        "- No romanization, no parenthetical notes, no explanations.\n"
-        "- The pipe character | separates English from Korean.\n"
-    )
+    # Cache the system prompt — it's identical on every call, so Haiku reuses it
+    # after the first request, cutting input token cost on subsequent calls.
+    system_prompt = [
+        {
+            "type": "text",
+            "text": (
+                "You are a Korean linguistics expert generating parallel English–Korean sentence "
+                "pairs for a machine translation training corpus.\n\n"
+                "OUTPUT FORMAT — respond with ONLY a numbered list, one pair per line:\n"
+                "1. English sentence | Korean sentence\n"
+                "2. English sentence | Korean sentence\n"
+                "...\n\n"
+                "RULES:\n"
+                "- Each Korean sentence MUST end with the correct speech-level morpheme.\n"
+                "- Vary the topics: everyday life, work, food, travel, emotions, requests.\n"
+                "- Keep sentences short to medium length (5–15 words in English).\n"
+                "- No romanization, no parenthetical notes, no explanations.\n"
+                "- The pipe character | separates English from Korean.\n"
+                "- Every sentence must be unique — do not repeat sentences from previous batches.\n"
+            ),
+            "cache_control": {"type": "ephemeral"},
+        }
+    ]
 
-    consecutive_empty = 0
-    max_consecutive_empty = 5
+    consecutive_parse_failures = 0
+    max_parse_failures = 5
+    consecutive_all_dupes = 0
+    max_consecutive_all_dupes = 10
     last_checkpoint_at = len(collected)
+    # Track recent acceptance rate to right-size each request — avoids paying
+    # for pairs that get discarded as duplicates.
+    recent_verified: list[int] = []
+    recent_unique: list[int] = []
 
     try:
         while len(collected) < target_count:
-            actual_batch = batch_size
+            # Adaptive batch size: request just enough to yield ~batch_size unique pairs.
+            # Uses rolling acceptance rate from last 5 batches; clamp between 1x and 4x.
+            if recent_verified and sum(recent_verified):
+                acceptance_rate = sum(recent_unique) / sum(recent_verified)
+                actual_batch = min(
+                    max(batch_size, round(batch_size / max(acceptance_rate, 0.25))),
+                    batch_size * 4,
+                )
+            else:
+                actual_batch = batch_size
+
+            # Scale max_tokens to actual request size (~60 tokens per pair is a safe upper bound)
+            max_tokens = min(actual_batch * 60, 4096)
 
             response = client.messages.create(
                 model="claude-haiku-4-5",
-                max_tokens=2048,
-                system=system_prompt,
+                max_tokens=max_tokens,
+                system=system_prompt,  # type: ignore[arg-type]
                 messages=[{
                     "role": "user",
                     "content": (
                         f"Generate exactly {actual_batch} English–Korean sentence pairs in "
                         f"{target_label} register ({description}).\n\n"
-                        "Each Korean sentence must end with the appropriate speech-level morpheme."
+                        "Each Korean sentence must end with the appropriate speech-level morpheme. "
+                        "Every sentence must be unique and cover a different topic or situation."
                     ),
                 }],
+                timeout=60.0,
             )
 
             text = next((b.text for b in response.content if b.type == "text"), "")
             batch_verified = _parse_and_verify(text, target_label, label_sentence)
 
             if not batch_verified:
-                consecutive_empty += 1
+                consecutive_parse_failures += 1
                 logger.warning(
                     f"[{target_label}] batch produced 0 verified pairs "
-                    f"({consecutive_empty}/{max_consecutive_empty} consecutive empties)"
+                    f"({consecutive_parse_failures}/{max_parse_failures} consecutive failures)"
                 )
-                if consecutive_empty >= max_consecutive_empty:
-                    logger.error(f"[{target_label}] too many empty batches — stopping early")
+                if consecutive_parse_failures >= max_parse_failures:
+                    logger.error(f"[{target_label}] too many parse failures — stopping early")
                     break
                 continue
 
-            consecutive_empty = 0
-            collected.extend(batch_verified)
-            logger.info(f"[{target_label}] {len(collected):,}/{target_count:,} verified pairs")
+            consecutive_parse_failures = 0
+
+            # Deduplicate against all previously seen Korean sentences
+            unique_batch = [(en, ko, lbl) for en, ko, lbl in batch_verified if ko not in seen_ko]
+            for _, ko, _ in unique_batch:
+                seen_ko.add(ko)
+
+            # Update rolling acceptance rate (keep last 5 batches)
+            recent_verified.append(len(batch_verified))
+            recent_unique.append(len(unique_batch))
+            if len(recent_verified) > 5:
+                recent_verified.pop(0)
+                recent_unique.pop(0)
+
+            dupe_count = len(batch_verified) - len(unique_batch)
+            if dupe_count:
+                logger.debug(f"[{target_label}] filtered {dupe_count} duplicate(s) from batch")
+
+            if not unique_batch:
+                consecutive_all_dupes += 1
+                if consecutive_all_dupes >= max_consecutive_all_dupes:
+                    logger.error(
+                        f"[{target_label}] {max_consecutive_all_dupes} consecutive batches "
+                        "yielded only duplicates — stopping early"
+                    )
+                    break
+            else:
+                consecutive_all_dupes = 0
+
+            collected.extend(unique_batch)
+            logger.info(f"[{target_label}] {len(collected):,}/{target_count:,} unique verified pairs")
 
             # Save checkpoint periodically
             if len(collected) - last_checkpoint_at >= checkpoint_every:
@@ -232,6 +292,10 @@ def augment_by_llm(
     return result
 
 
+_LIST_PREFIX = re.compile(r"^\d+[.)]\s+")
+_MIN_EN_WORDS = 3
+
+
 def _parse_and_verify(
     text: str,
     expected_label: str,
@@ -243,14 +307,12 @@ def _parse_and_verify(
     """
     verified = []
     for line in text.splitlines():
-        # Strip leading number + dot/paren: "1. ", "1) ", etc.
         line = line.strip()
         if not line:
             continue
-        for sep in (". ", ") ", "- "):
-            if line[0].isdigit() and sep in line:
-                line = line.split(sep, 1)[1]
-                break
+
+        # Strip leading list marker anchored at start: "1. ", "2) ", etc.
+        line = _LIST_PREFIX.sub("", line)
 
         if "|" not in line:
             continue
@@ -261,6 +323,10 @@ def _parse_and_verify(
 
         en, ko = parts[0].strip(), parts[1].strip()
         if not en or not ko:
+            continue
+
+        # Reject pairs that are too short to be useful training examples
+        if len(en.split()) < _MIN_EN_WORDS:
             continue
 
         label = label_fn(ko)

@@ -55,7 +55,8 @@ TGT_LANG = "ko_KR"
 
 # All training hyperparameters in one place for easy tuning.
 # gradient_checkpointing trades ~25% speed for ~40% VRAM — required on T4.
-# save_strategy must match eval_strategy for load_best_model_at_end to work.
+# save_strategy="steps" + eval_strategy="epoch": Trainer saves every 500 steps
+# for crash recovery AND at the end of each epoch for load_best_model_at_end.
 TRAINING_ARGS = {
     "learning_rate": 5e-5,
     "warmup_steps": 500,
@@ -63,8 +64,9 @@ TRAINING_ARGS = {
     "gradient_accumulation_steps": 8,
     "num_train_epochs": 3,
     "eval_strategy": "epoch",
-    "save_strategy": "epoch",
-    "save_total_limit": 2,
+    "save_strategy": "steps",
+    "save_steps": 500,
+    "save_total_limit": 3,
     "metric_for_best_model": "eval_chrf",
     "greater_is_better": True,
     "load_best_model_at_end": True,
@@ -95,7 +97,9 @@ def load_model_and_tokenizer(model_name: str = MODEL_NAME):
     # decoder token, otherwise training and generation are misaligned.
     ko_id = tokenizer.lang_code_to_id[TGT_LANG]
     model.config.decoder_start_token_id = ko_id
-    model.config.forced_bos_token_id = ko_id
+    model.config.forced_bos_token_id = None  # pretrained config.json sets this; transformers >=4.46 raises ValueError if non-None
+    model.generation_config.decoder_start_token_id = ko_id
+    model.generation_config.forced_bos_token_id = ko_id
 
     return model, tokenizer
 
@@ -118,7 +122,7 @@ def _sample_stratified(rows: list[tuple], max_rows: int, seed: int = 42) -> list
     return sampled
 
 
-def train(data_path: str, output_dir: str, max_rows: int | None = None) -> None:
+def train(data_path: str, output_dir: str, max_rows: int | None = None, resume: bool = False) -> None:
     model, tokenizer = load_model_and_tokenizer()
 
     train_ds = load_split(data_path, tokenizer, max_rows=max_rows)
@@ -158,7 +162,7 @@ def train(data_path: str, output_dir: str, max_rows: int | None = None) -> None:
         compute_metrics=compute_metrics,
     )
 
-    trainer.train()
+    trainer.train(resume_from_checkpoint=resume or None)
     trainer.save_model(output_dir)
     tokenizer.save_pretrained(output_dir)
     logger.info(f"Model saved to {output_dir}")
@@ -178,5 +182,10 @@ if __name__ == "__main__":
         default=None,
         help="Stratified sample size (default: use all rows). Use 50000 for Colab free T4.",
     )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume from the latest checkpoint in the output directory.",
+    )
     args = parser.parse_args()
-    train(args.data, args.output, max_rows=args.max_rows)
+    train(args.data, args.output, max_rows=args.max_rows, resume=args.resume)
