@@ -14,7 +14,8 @@ Usage:
     python -m backend.model.evaluate \\
         --model /content/drive/MyDrive/noonchi/checkpoints/noonchi-mbart \\
         --test data/test.tsv \\
-        --batch-size 32
+        --batch-size 8 \\
+        --num-beams 4
 """
 
 import argparse
@@ -22,6 +23,7 @@ import logging
 
 import torch
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 from transformers import DataCollatorForSeq2Seq
 
 from backend.evaluation.metrics import evaluate
@@ -34,7 +36,8 @@ logger = logging.getLogger(__name__)
 def evaluate_model(
     model_dir: str,
     test_tsv: str,
-    batch_size: int = 32,
+    batch_size: int = 8,
+    num_beams: int = 4,
 ) -> dict[str, float]:
     model, tokenizer = load_model_and_tokenizer(model_dir)
     model.eval()
@@ -54,7 +57,7 @@ def evaluate_model(
     labels: list[str] = []
 
     with torch.no_grad():
-        for batch in loader:
+        for batch in tqdm(loader, desc="Translating", unit="batch"):
             input_ids = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
 
@@ -62,7 +65,7 @@ def evaluate_model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 forced_bos_token_id=ko_id,
-                num_beams=4,
+                num_beams=num_beams,
                 max_length=128,
                 early_stopping=True,
             )
@@ -74,6 +77,7 @@ def evaluate_model(
         references.append(ko_ref)
         labels.append(formality)
 
+    logger.info("Computing metrics...")
     results = evaluate(hypotheses, references, labels)
     logger.info("Evaluation results:")
     for metric, value in results.items():
@@ -90,7 +94,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("--model", required=True, help="Path to trained model directory")
     parser.add_argument("--test", required=True, help="Path to test.tsv")
-    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--num-beams", type=int, default=4, help="Beam search width (use 1 for fast eval)")
     args = parser.parse_args()
 
-    evaluate_model(args.model, args.test, batch_size=args.batch_size)
+    evaluate_model(args.model, args.test, batch_size=args.batch_size, num_beams=args.num_beams)
