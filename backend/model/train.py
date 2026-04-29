@@ -55,8 +55,9 @@ TGT_LANG = "ko_KR"
 
 # All training hyperparameters in one place for easy tuning.
 # gradient_checkpointing trades ~25% speed for ~40% VRAM — required on T4.
-# save_strategy="steps" + eval_strategy="epoch": Trainer saves every 500 steps
-# for crash recovery AND at the end of each epoch for load_best_model_at_end.
+# save_strategy="steps": saves every 500 steps for crash recovery on Colab.
+# load_best_model_at_end requires save_strategy==eval_strategy, so it's off;
+# Cell 8 evaluates the final saved model explicitly instead.
 TRAINING_ARGS = {
     "learning_rate": 5e-5,
     "warmup_steps": 500,
@@ -67,9 +68,7 @@ TRAINING_ARGS = {
     "save_strategy": "steps",
     "save_steps": 500,
     "save_total_limit": 3,
-    "metric_for_best_model": "eval_chrf",
-    "greater_is_better": True,
-    "load_best_model_at_end": True,
+    "load_best_model_at_end": False,
     "fp16": True,
     "gradient_checkpointing": True,
     "predict_with_generate": True,
