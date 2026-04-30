@@ -74,6 +74,7 @@ TRAINING_ARGS = {
     "predict_with_generate": True,
     "generation_max_length": 128,
     "generation_num_beams": 1,  # greedy for training-time eval; Cell 8 uses full beams
+    "generation_no_repeat_ngram_size": 3,
     "dataloader_num_workers": 0,
 }
 

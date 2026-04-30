@@ -91,6 +91,8 @@ def evaluate_model(
                     num_beams=num_beams,
                     max_length=128,
                     early_stopping=True,
+                    no_repeat_ngram_size=3,
+                    repetition_penalty=1.2,
                 )
                 decoded = tokenizer.batch_decode(output_ids, skip_special_tokens=True)
                 hypotheses.extend(decoded)
