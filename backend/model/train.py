@@ -93,12 +93,14 @@ def load_model_and_tokenizer(model_name: str = MODEL_NAME):
     tokenizer.tgt_lang = TGT_LANG
     model.resize_token_embeddings(len(tokenizer))
 
-    # Align decoder start with inference: both must use ko_KR as the first
-    # decoder token, otherwise training and generation are misaligned.
+    # Standard mBART decode pattern: decoder starts with </s> (id=2, the pretrained default),
+    # then forced_bos forces the first generated token to be the target lang code.
+    # Do NOT override decoder_start_token_id — keeping the pretrained default (2) is required
+    # so training decoder_input_ids match what mBART was pretrained on: [</s>, ko_KR, content...].
+    # Clearing forced_bos_token_id from model.config avoids a ValueError in transformers >=4.46
+    # when both decoder_start_token_id and forced_bos_token_id are set on the same config object.
     ko_id = tokenizer.lang_code_to_id[TGT_LANG]
-    model.config.decoder_start_token_id = ko_id
-    model.config.forced_bos_token_id = None  # pretrained config.json sets this; transformers >=4.46 raises ValueError if non-None
-    model.generation_config.decoder_start_token_id = ko_id
+    model.config.forced_bos_token_id = None
     model.generation_config.forced_bos_token_id = ko_id
 
     return model, tokenizer
