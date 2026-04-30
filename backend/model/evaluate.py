@@ -89,7 +89,7 @@ def evaluate_model(
                     attention_mask=attention_mask,
                     forced_bos_token_id=ko_id,
                     num_beams=num_beams,
-                    max_length=128,
+                    max_new_tokens=200,
                     early_stopping=True,
                     no_repeat_ngram_size=3,
                     repetition_penalty=1.2,

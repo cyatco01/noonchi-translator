@@ -10,7 +10,7 @@ before encoding, conditioning the decoder on the target speech level:
 
 Training configuration:
   optimizer:                 AdamW
-  learning rate:             5e-5 with linear warmup (500 steps)
+  learning rate:             3e-5 with linear warmup (500 steps)
   effective batch size:      32 (batch 4 × grad_accum 8)
   epochs:                    3 with early stopping on eval_chrf
   src lang:                  en_XX
@@ -29,9 +29,7 @@ Usage (full dataset — A100 or university cluster):
 """
 
 import argparse
-import csv
 import logging
-import random
 from pathlib import Path
 
 import numpy as np
@@ -44,7 +42,7 @@ from transformers import (
 )
 
 from backend.evaluation.metrics import compute_chrf
-from backend.model.dataset import NoonchiDataset, load_split
+from backend.model.dataset import load_split
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +57,7 @@ TGT_LANG = "ko_KR"
 # load_best_model_at_end requires save_strategy==eval_strategy, so it's off;
 # Cell 8 evaluates the final saved model explicitly instead.
 TRAINING_ARGS = {
-    "learning_rate": 5e-5,
+    "learning_rate": 3e-5,           # mBART paper recommendation; 5e-5 risks overwriting pretrained weights
     "warmup_steps": 500,
     "per_device_train_batch_size": 4,
     "gradient_accumulation_steps": 8,
@@ -71,10 +69,10 @@ TRAINING_ARGS = {
     "load_best_model_at_end": False,
     "fp16": True,
     "gradient_checkpointing": True,
+    "label_smoothing_factor": 0.1,   # standard for seq2seq; prevents overconfident token predictions
     "predict_with_generate": True,
-    "generation_max_length": 128,
-    "generation_num_beams": 1,  # greedy for training-time eval; Cell 8 uses full beams
-    "generation_no_repeat_ngram_size": 3,
+    "generation_max_length": 200,    # Korean can run longer than English; 128 clips valid outputs
+    "generation_num_beams": 1,       # greedy for training-time eval; Cell 8 uses full beams
     "dataloader_num_workers": 0,
 }
 
@@ -101,28 +99,12 @@ def load_model_and_tokenizer(model_name: str = MODEL_NAME):
     # Clearing forced_bos_token_id from model.config avoids a ValueError in transformers >=4.46
     # when both decoder_start_token_id and forced_bos_token_id are set on the same config object.
     ko_id = tokenizer.lang_code_to_id[TGT_LANG]
-    model.config.forced_bos_token_id = None
+    model.config.forced_bos_token_id = None      # avoid transformers >=4.46 ValueError
     model.generation_config.forced_bos_token_id = ko_id
+    model.generation_config.no_repeat_ngram_size = 3   # prevent syllable repetition loops
+    model.generation_config.repetition_penalty = 1.2
 
     return model, tokenizer
-
-
-def _sample_stratified(rows: list[tuple], max_rows: int, seed: int = 42) -> list[tuple]:
-    """Return a stratified sample of `max_rows` from rows, balanced across formality classes."""
-    by_class: dict[str, list] = {}
-    for row in rows:
-        label = row[2]
-        by_class.setdefault(label, []).append(row)
-
-    rng = random.Random(seed)
-    per_class = max_rows // len(by_class)
-    sampled = []
-    for label_rows in by_class.values():
-        rng.shuffle(label_rows)
-        sampled.extend(label_rows[:per_class])
-
-    rng.shuffle(sampled)
-    return sampled
 
 
 def train(data_path: str, output_dir: str, max_rows: int | None = None, resume: bool = False) -> None:
@@ -144,10 +126,16 @@ def train(data_path: str, output_dir: str, max_rows: int | None = None, resume: 
             preds = preds[0]
         preds = np.where(preds != -100, preds, tokenizer.pad_token_id)
         label_ids = np.where(label_ids != -100, label_ids, tokenizer.pad_token_id)
-        decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
-        decoded_labels = tokenizer.batch_decode(label_ids, skip_special_tokens=True)
-        decoded_preds = [p.strip() for p in decoded_preds]
-        decoded_labels = [l.strip() for l in decoded_labels]
+        decoded_preds = [p.strip() for p in tokenizer.batch_decode(preds, skip_special_tokens=True)]
+        decoded_labels = [p.strip() for p in tokenizer.batch_decode(label_ids, skip_special_tokens=True)]
+
+        # Print 3 samples so you can eyeball mid-training whether the model is learning
+        # or collapsing (e.g. 요요요요요 means decoder alignment is broken).
+        logger.info("Sample predictions:")
+        for pred, ref in zip(decoded_preds[:3], decoded_labels[:3]):
+            logger.info(f"  HYP: {pred}")
+            logger.info(f"  REF: {ref}")
+
         return {"chrf": compute_chrf(decoded_preds, decoded_labels)}
 
     training_args = Seq2SeqTrainingArguments(
@@ -155,7 +143,7 @@ def train(data_path: str, output_dir: str, max_rows: int | None = None, resume: 
         **TRAINING_ARGS,
     )
 
-    data_collator = DataCollatorForSeq2Seq(tokenizer, model=model, padding=True)
+    data_collator = DataCollatorForSeq2Seq(tokenizer, model=model, padding=True, pad_to_multiple_of=8)
 
     trainer = Seq2SeqTrainer(
         model=model,
