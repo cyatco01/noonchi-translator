@@ -3,35 +3,12 @@ import { getAvailableBackends } from './config/backends';
 import { setContext, translate } from './services/api';
 import FormalityBadge from './components/FormalityBadge';
 
-// Relationship options — must match backend RelationshipType enum
-const RELATIONSHIPS = [
-  { value: 'boss',         label: 'Boss',         description: 'Your superior at work' },
-  { value: 'elder',        label: 'Elder',         description: 'Older respected person' },
-  { value: 'professor',    label: 'Professor',     description: 'Instructor or academic mentor' },
-  { value: 'colleague',    label: 'Colleague',     description: 'Coworker at a similar level' },
-  { value: 'peer',         label: 'Peer',          description: 'Same-age acquaintance or classmate' },
-  { value: 'subordinate',  label: 'Subordinate',   description: 'Someone junior to you at work' },
-  { value: 'friend',       label: 'Friend',        description: 'Close friend' },
-  { value: 'acquaintance', label: 'Acquaintance',  description: 'Someone you know casually' },
-  { value: 'stranger',     label: 'Stranger',      description: 'Someone you don\'t know' },
-];
-
-// Setting options — must match backend SettingType enum
-const SETTINGS = [
-  { value: 'workplace', label: 'Workplace',  description: 'Office or professional environment' },
-  { value: 'academic',  label: 'Academic',   description: 'School, university, or study setting' },
-  { value: 'social',    label: 'Social',     description: 'Party, gathering, or casual outing' },
-  { value: 'public',    label: 'Public',     description: 'Street, transport, or public space' },
-  { value: 'intimate',  label: 'Intimate',   description: 'Home or close personal setting' },
-];
 
 function App() {
   // State management
   const [selectedMethod, setSelectedMethod] = useState('agent');
   const [sessionId, setSessionId] = useState(null);
-  const [relationship, setRelationship] = useState('');
-  const [ageDifferential, setAgeDifferential] = useState(0);
-  const [setting, setSetting] = useState('');
+  const [situation, setSituation] = useState('');
   const [formality, setFormality] = useState(null);
   const [formalityDescription, setFormalityDescription] = useState('');
   const [inputText, setInputText] = useState('');
@@ -44,19 +21,15 @@ function App() {
 
   // Handle context setup (Step 1)
   const handleSetContext = async () => {
-    if (!relationship) {
-      setError('Please select a relationship');
-      return;
-    }
-    if (!setting) {
-      setError('Please select a setting');
+    if (!situation.trim()) {
+      setError('Please describe your situation');
       return;
     }
 
     setLoading(true);
     setError(null);
 
-    const result = await setContext(relationship, ageDifferential, setting, selectedMethod);
+    const result = await setContext(situation, selectedMethod);
 
     if (result.success) {
       setSessionId(result.data.session_id);
@@ -108,9 +81,7 @@ function App() {
   // Reset context (start new session)
   const handleResetContext = () => {
     setSessionId(null);
-    setRelationship('');
-    setAgeDifferential(0);
-    setSetting('');
+    setSituation('');
     setFormality(null);
     setContextSet(false);
     setTranslations([]);
@@ -178,64 +149,26 @@ function App() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Relationship *
+                    Describe the situation
                   </label>
-                  <select
-                    value={relationship}
-                    onChange={(e) => setRelationship(e.target.value)}
+                  <textarea
+                    value={situation}
+                    onChange={(e) => setSituation(e.target.value)}
                     disabled={contextSet}
-                    className="select-field"
-                  >
-                    <option value="">Select relationship...</option>
-                    {RELATIONSHIPS.map(rel => (
-                      <option key={rel.value} value={rel.value}>
-                        {rel.label} - {rel.description}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Setting *
-                  </label>
-                  <select
-                    value={setting}
-                    onChange={(e) => setSetting(e.target.value)}
-                    disabled={contextSet}
-                    className="select-field"
-                  >
-                    <option value="">Select setting...</option>
-                    {SETTINGS.map(s => (
-                      <option key={s.value} value={s.value}>
-                        {s.label} — {s.description}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Age Difference
-                    <span className="ml-1 font-normal text-gray-500">
-                      (negative = you are younger, positive = you are older)
-                    </span>
-                  </label>
-                  <input
-                    type="number"
-                    value={ageDifferential}
-                    onChange={(e) => setAgeDifferential(parseInt(e.target.value) || 0)}
-                    disabled={contextSet}
-                    min="-50"
-                    max="50"
-                    className="input-field"
+                    placeholder="e.g. 'I'm ordering food from a young waitress at a restaurant' or 'Emailing my professor about a missed deadline'"
+                    rows="3"
+                    maxLength="500"
+                    className="textarea-field"
                   />
+                  <p className="mt-1 text-xs text-gray-400 text-right">
+                    {situation.length} / 500
+                  </p>
                 </div>
 
                 {!contextSet ? (
                   <button
                     onClick={handleSetContext}
-                    disabled={loading || !relationship}
+                    disabled={loading || !situation.trim()}
                     className="btn-primary w-full"
                   >
                     {loading ? 'Setting Context...' : 'Set Context'}

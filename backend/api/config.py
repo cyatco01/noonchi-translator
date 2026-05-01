@@ -47,8 +47,8 @@ class Settings:
         Returns:
             tuple: (is_valid, error_message)
         """
-        if self.BACKEND == 'claude' and not self.ANTHROPIC_API_KEY:
-            return False, "ANTHROPIC_API_KEY not set. Please add it to your .env file."
+        if not self.ANTHROPIC_API_KEY:
+            return False, "ANTHROPIC_API_KEY not set. Required for context parsing."
 
         if self.BACKEND == 'mbart' and not Path(self.MBART_MODEL_DIR).exists():
             return False, f"MBART model directory not found: {self.MBART_MODEL_DIR}"

@@ -12,20 +12,16 @@ import { getBackend } from '../config/backends';
 /**
  * Set conversation context (Step 1 of translation flow)
  *
- * @param {string} relationship - Speaker-addressee relationship (must match RelationshipType enum)
- * @param {number} ageDifferential - Age difference: negative = speaker is younger, positive = older
- * @param {string} setting - Situational setting (must match SettingType enum)
+ * @param {string} situation - Free-text description of the social situation
  * @param {string} method - Which backend to use ('agent', 'papago_rules', 'ml_model')
  * @returns {Promise<Object>} Context response with session_id and formality_token
  */
-export const setContext = async (relationship, ageDifferential, setting, method = 'agent') => {
+export const setContext = async (situation, method = 'agent') => {
   const backend = getBackend(method);
 
   try {
     const response = await axios.post(`${backend.baseURL}/api/set-context`, {
-      relationship,
-      age_differential: ageDifferential,
-      setting,
+      situation,
     });
 
     return {

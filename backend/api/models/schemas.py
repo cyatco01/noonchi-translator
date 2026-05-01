@@ -89,13 +89,24 @@ class SocialContext(BaseModel):
     )
 
 
-class ContextRequest(SocialContext):
-    """Request body for Step 1: set conversation context."""
-    pass
+class ContextRequest(BaseModel):
+    """Request body for Step 1: set conversation context via free-text description."""
+    situation: str = Field(
+        ...,
+        min_length=5,
+        max_length=500,
+        description="Describe who you're talking to and the context",
+        examples=["Emailing my professor about a missed deadline"]
+    )
+    formality_override: Optional[FormalityToken] = Field(
+        None,
+        description="Optional: manually override the inferred formality level"
+    )
 
 
 class ContextResponse(BaseModel):
     """Response after setting context (Step 1)."""
+    situation: str
     session_id: str
     relationship: RelationshipType
     age_differential: int

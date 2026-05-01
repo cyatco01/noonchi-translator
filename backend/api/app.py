@@ -23,7 +23,8 @@ from models.schemas import (
     SocialContext,
     HealthResponse
 )
-from agents.claude_agent import ClaudeTranslationAgent
+from anthropic import Anthropic
+from agents.claude_agent import ClaudeTranslationAgent, parse_situation
 from agents.mbart_agent import MBartTranslationAgent  # noqa: E402 — sys.path insert in module
 from session_manager import get_session_manager
 
@@ -31,11 +32,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 translation_agent = None
+context_parser_client: Anthropic = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global translation_agent
+    global translation_agent, context_parser_client
 
     settings = get_settings()
     is_valid, error_msg = settings.validate()
@@ -44,6 +46,7 @@ async def lifespan(app: FastAPI):
         raise RuntimeError(error_msg)
 
     try:
+        context_parser_client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
         if settings.BACKEND == "mbart":
             translation_agent = MBartTranslationAgent(settings.MBART_MODEL_DIR)
         else:
@@ -96,41 +99,36 @@ async def set_context(request: ContextRequest):
         raise HTTPException(status_code=503, detail="Translation service not available")
 
     try:
-        context = SocialContext(
-            relationship=request.relationship,
-            age_differential=request.age_differential,
-            setting=request.setting,
-            formality_override=request.formality_override
-        )
+        context, explanation = parse_situation(context_parser_client, request.situation)
+        if request.formality_override:
+            context.formality_override = request.formality_override
 
         formality_token = translation_agent.resolve_formality(context)
 
         session_manager = get_session_manager()
         session = session_manager.create_session(
-            relationship=request.relationship,
-            age_differential=request.age_differential,
-            setting=request.setting,
+            situation=request.situation,
+            relationship=context.relationship,
+            age_differential=context.age_differential,
+            setting=context.setting,
             formality_token=formality_token,
             formality_override=request.formality_override
         )
 
         logger.info(
-            f"Context set — relationship={request.relationship.value}, "
-            f"age_diff={request.age_differential}, setting={request.setting.value} "
+            f"Context set — {explanation} "
             f"→ {formality_token.as_token()} [session={session.session_id}]"
         )
 
         return ContextResponse(
+            situation=request.situation,
             session_id=session.session_id,
-            relationship=request.relationship,
-            age_differential=request.age_differential,
-            setting=request.setting,
+            relationship=context.relationship,
+            age_differential=context.age_differential,
+            setting=context.setting,
             formality_token=formality_token,
             conditioning_input_prefix=formality_token.as_token(),
-            message=(
-                f"Formality resolved to {formality_token.as_token()}. "
-                "You can now translate text using this session."
-            )
+            message=f"{explanation} → {formality_token.as_token()}"
         )
 
     except ValueError as e:

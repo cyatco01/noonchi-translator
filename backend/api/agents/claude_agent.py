@@ -25,6 +25,63 @@ from models.schemas import (
 logger = logging.getLogger(__name__)
 
 
+def parse_situation(client: Anthropic, situation: str) -> tuple[SocialContext, str]:
+    """
+    Parse a free-text situation description into a structured SocialContext.
+
+    Uses claude-haiku for speed and cost efficiency — this is a pure
+    classification task that doesn't need a large model.
+
+    Returns:
+        (SocialContext, explanation) where explanation is a one-sentence
+        human-readable summary of what was detected.
+    """
+    prompt = f"""You are analyzing social context for a Korean translation app.
+
+Given a situation description, extract the social context needed to determine
+the appropriate Korean speech level.
+
+Valid relationship values: boss, elder, professor, colleague, peer, subordinate,
+friend, acquaintance, stranger
+
+Valid setting values: workplace, academic, social, public, intimate
+
+Age differential: integer from -50 to 50.
+  Negative = speaker is younger than the other person.
+  Positive = speaker is older than the other person.
+  0 = similar age or unknown.
+
+Situation: "{situation}"
+
+Respond with JSON only:
+{{
+    "relationship": "...",
+    "age_differential": 0,
+    "setting": "...",
+    "explanation": "one short sentence describing what you detected"
+}}"""
+
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=150,
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    raw = response.content[0].text.strip()
+    if "```" in raw:
+        raw = raw.split("```")[1].lstrip("json").strip()
+
+    data = json.loads(raw)
+    context = SocialContext(
+        relationship=RelationshipType(data["relationship"]),
+        age_differential=int(data["age_differential"]),
+        setting=SettingType(data["setting"]),
+    )
+    return context, data["explanation"]
+
+logger = logging.getLogger(__name__)
+
+
 class FormalityResolver:
     """
     Rule-based pragmatic inference engine.
