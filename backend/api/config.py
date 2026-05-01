@@ -17,6 +17,10 @@ load_dotenv(dotenv_path=env_path)
 class Settings:
     """Application settings loaded from environment variables."""
 
+    # Backend selection
+    BACKEND: str = os.getenv('BACKEND', 'claude')               # 'claude' | 'mbart'
+    MBART_MODEL_DIR: str = os.getenv('MBART_MODEL_DIR', 'models/noonchi-mbart')
+
     # API Keys
     ANTHROPIC_API_KEY: str = os.getenv('ANTHROPIC_API_KEY', '')
 
@@ -43,8 +47,11 @@ class Settings:
         Returns:
             tuple: (is_valid, error_message)
         """
-        if not self.ANTHROPIC_API_KEY:
+        if self.BACKEND == 'claude' and not self.ANTHROPIC_API_KEY:
             return False, "ANTHROPIC_API_KEY not set. Please add it to your .env file."
+
+        if self.BACKEND == 'mbart' and not Path(self.MBART_MODEL_DIR).exists():
+            return False, f"MBART model directory not found: {self.MBART_MODEL_DIR}"
 
         if not self.DATA_DIR.exists():
             return False, f"Data directory not found: {self.DATA_DIR}"

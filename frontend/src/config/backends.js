@@ -37,7 +37,7 @@ export const BACKENDS = {
     id: 'ml_model',
     name: 'Pure ML Model',
     baseURL: 'http://localhost:8002',
-    available: false, // Set to true when Method #3 is implemented
+    available: true,
     description: 'Custom trained neural network model',
     features: [
       'End-to-end learned translation',

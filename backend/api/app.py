@@ -24,12 +24,13 @@ from models.schemas import (
     HealthResponse
 )
 from agents.claude_agent import ClaudeTranslationAgent
+from agents.mbart_agent import MBartTranslationAgent  # noqa: E402 — sys.path insert in module
 from session_manager import get_session_manager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-translation_agent: ClaudeTranslationAgent = None
+translation_agent = None
 
 
 @asynccontextmanager
@@ -43,8 +44,11 @@ async def lifespan(app: FastAPI):
         raise RuntimeError(error_msg)
 
     try:
-        translation_agent = ClaudeTranslationAgent()
-        logger.info("Translation agent initialized")
+        if settings.BACKEND == "mbart":
+            translation_agent = MBartTranslationAgent(settings.MBART_MODEL_DIR)
+        else:
+            translation_agent = ClaudeTranslationAgent()
+        logger.info(f"Translation agent initialized (backend={settings.BACKEND})")
     except Exception as e:
         logger.error(f"Failed to initialize agent: {e}")
         raise
