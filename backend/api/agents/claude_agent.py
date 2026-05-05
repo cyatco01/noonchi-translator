@@ -7,7 +7,6 @@ inference endpoint will expose: receives a conditioned input string
 ("<token> english text") and returns Korean output.
 """
 
-import json
 import logging
 from typing import Optional
 
@@ -25,59 +24,65 @@ from models.schemas import (
 logger = logging.getLogger(__name__)
 
 
-def parse_situation(client: Anthropic, situation: str) -> tuple[SocialContext, str]:
+def parse_situation(client: Anthropic, situation: str) -> tuple[SocialContext, str, float]:
     """
     Parse a free-text situation description into a structured SocialContext.
 
-    Uses claude-haiku for speed and cost efficiency — this is a pure
-    classification task that doesn't need a large model.
+    Uses tool_use with a forced tool call so the response is schema-validated
+    by the API — no JSON parsing needed.
 
     Returns:
-        (SocialContext, explanation) where explanation is a one-sentence
-        human-readable summary of what was detected.
+        (SocialContext, reasoning, confidence)
     """
-    prompt = f"""You are analyzing social context for a Korean translation app.
-
-Given a situation description, extract the social context needed to determine
-the appropriate Korean speech level.
-
-Valid relationship values: boss, elder, professor, colleague, peer, subordinate,
-friend, acquaintance, stranger
-
-Valid setting values: workplace, academic, social, public, intimate
-
-Age differential: integer from -50 to 50.
-  Negative = speaker is younger than the other person.
-  Positive = speaker is older than the other person.
-  0 = similar age or unknown.
-
-Situation: "{situation}"
-
-Respond with JSON only:
-{{
-    "relationship": "...",
-    "age_differential": 0,
-    "setting": "...",
-    "explanation": "one short sentence describing what you detected"
-}}"""
-
     response = client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=150,
-        messages=[{"role": "user", "content": prompt}]
+        max_tokens=200,
+        tools=[{
+            "name": "extract_social_context",
+            "description": "Extract social context from a situation description for Korean formality inference.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "relationship": {
+                        "type": "string",
+                        "enum": ["boss", "elder", "professor", "colleague", "peer",
+                                 "subordinate", "friend", "acquaintance", "stranger"]
+                    },
+                    "age_differential": {
+                        "type": "integer",
+                        "minimum": -50,
+                        "maximum": 50,
+                        "description": "Negative = speaker is younger. Positive = speaker is older. 0 = similar age or unknown."
+                    },
+                    "setting": {
+                        "type": "string",
+                        "enum": ["workplace", "academic", "social", "public", "intimate"]
+                    },
+                    "reasoning": {
+                        "type": "string",
+                        "description": "One sentence explaining what social context was detected."
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "minimum": 0.0,
+                        "maximum": 1.0,
+                        "description": "Confidence in the extraction (0.0–1.0)."
+                    }
+                },
+                "required": ["relationship", "age_differential", "setting", "reasoning", "confidence"]
+            }
+        }],
+        tool_choice={"type": "tool", "name": "extract_social_context"},
+        messages=[{"role": "user", "content": f"Extract social context: {situation}"}]
     )
 
-    raw = response.content[0].text.strip()
-    if "```" in raw:
-        raw = raw.split("```")[1].lstrip("json").strip()
-
-    data = json.loads(raw)
+    data = next(b for b in response.content if b.type == "tool_use").input
     context = SocialContext(
         relationship=RelationshipType(data["relationship"]),
         age_differential=int(data["age_differential"]),
         setting=SettingType(data["setting"]),
     )
-    return context, data["explanation"]
+    return context, data["reasoning"], float(data["confidence"])
 
 logger = logging.getLogger(__name__)
 
@@ -182,28 +187,6 @@ class ClaudeTranslationAgent:
         """Delegate to FormalityResolver."""
         return self.resolver.resolve(context)
 
-    def _build_prompt(self, conditioned_input: str, formality_token: FormalityToken) -> str:
-        guide = self.FORMALITY_GUIDE[formality_token]
-        token_str = formality_token.as_token()
-
-        return f"""You are a Korean translator. Translate the English text to Korean using the specified speech level.
-
-The input follows the conditioning format used in formality-conditioned mBART fine-tuning:
-  {token_str} <english text>
-
-Input: {conditioned_input}
-
-Target speech level: {guide['level']}
-Required sentence-final endings: {guide['endings']}
-Notes: {guide['notes']}
-
-Respond with valid JSON only:
-{{
-    "translated_text": "Korean translation here",
-    "romanization": "romanized pronunciation (optional)",
-    "explanation": "brief note on formality choices made"
-}}"""
-
     async def translate(self, context: SocialContext, text: str) -> TranslationResponse:
         """
         Translate English text conditioned on the resolved formality token.
@@ -225,27 +208,47 @@ Respond with valid JSON only:
             f"setting={context.setting.value}]"
         )
 
-        prompt = self._build_prompt(conditioned_input, formality_token)
+        guide = self.FORMALITY_GUIDE[formality_token]
+        prompt = (
+            f"You are a Korean translator. Translate the English text to Korean "
+            f"using the specified speech level.\n\n"
+            f"Input: {conditioned_input}\n\n"
+            f"Target speech level: {guide['level']}\n"
+            f"Required sentence-final endings: {guide['endings']}\n"
+            f"Notes: {guide['notes']}"
+        )
 
         message = self.client.messages.create(
             model=self.model,
             max_tokens=self.settings.MAX_TOKENS,
             temperature=self.settings.TEMPERATURE,
+            tools=[{
+                "name": "provide_translation",
+                "description": "Provide the Korean translation with optional romanization and explanation.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "translated_text": {
+                            "type": "string",
+                            "description": "Korean translation at the specified formality level."
+                        },
+                        "romanization": {
+                            "type": "string",
+                            "description": "Romanized pronunciation (optional)."
+                        },
+                        "explanation": {
+                            "type": "string",
+                            "description": "Brief note on formality choices made (optional)."
+                        }
+                    },
+                    "required": ["translated_text"]
+                }
+            }],
+            tool_choice={"type": "tool", "name": "provide_translation"},
             messages=[{"role": "user", "content": prompt}]
         )
 
-        response_text = message.content[0].text.strip()
-
-        try:
-            result = json.loads(response_text)
-        except json.JSONDecodeError:
-            if "```json" in response_text:
-                start = response_text.find("```json") + 7
-                end = response_text.find("```", start)
-                result = json.loads(response_text[start:end].strip())
-            else:
-                raise ValueError(f"Invalid JSON from Claude: {response_text}")
-
+        result = next(b for b in message.content if b.type == "tool_use").input
         logger.info(f"Translation: '{result['translated_text']}'")
 
         return TranslationResponse(

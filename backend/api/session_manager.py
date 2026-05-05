@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ConversationSession:
     """Stores the full social context for a user session."""
-    situation: str
+    situation: Optional[str]
     session_id: str
     relationship: RelationshipType
     age_differential: int
@@ -43,7 +43,7 @@ class SessionManager:
 
     def create_session(
         self,
-        situation: str,
+        situation: Optional[str],
         relationship: RelationshipType,
         age_differential: int,
         setting: SettingType,

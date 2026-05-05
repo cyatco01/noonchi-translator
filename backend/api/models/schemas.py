@@ -2,7 +2,7 @@
 Pydantic models for request/response validation.
 """
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional
 from enum import Enum
 
@@ -90,23 +90,41 @@ class SocialContext(BaseModel):
 
 
 class ContextRequest(BaseModel):
-    """Request body for Step 1: set conversation context via free-text description."""
-    situation: str = Field(
-        ...,
+    """Request body for Step 1: set conversation context.
+
+    Two mutually exclusive paths:
+    - Free-text: provide situation (triggers Haiku parsing)
+    - Structured: provide relationship + age_differential + setting (no API call)
+    """
+    situation: Optional[str] = Field(
+        None,
         min_length=5,
         max_length=500,
         description="Describe who you're talking to and the context",
         examples=["Emailing my professor about a missed deadline"]
     )
+    relationship: Optional[RelationshipType] = Field(None, description="Speaker-addressee relationship")
+    age_differential: Optional[int] = Field(None, ge=-50, le=50, description="Age difference (negative = speaker is younger)")
+    setting: Optional[SettingType] = Field(None, description="Situational setting")
     formality_override: Optional[FormalityToken] = Field(
         None,
         description="Optional: manually override the inferred formality level"
     )
 
+    @model_validator(mode="after")
+    def require_one_path(self):
+        has_text = self.situation is not None
+        has_structured = all(f is not None for f in [
+            self.relationship, self.age_differential, self.setting
+        ])
+        if not has_text and not has_structured:
+            raise ValueError("Provide either situation text or all three structured fields (relationship, age_differential, setting)")
+        return self
+
 
 class ContextResponse(BaseModel):
     """Response after setting context (Step 1)."""
-    situation: str
+    situation: Optional[str]
     session_id: str
     relationship: RelationshipType
     age_differential: int
@@ -117,6 +135,8 @@ class ContextResponse(BaseModel):
         description="The token that will be prepended to source text, e.g. '<formal>'"
     )
     message: str
+    reasoning: Optional[str] = None
+    confidence: Optional[float] = None
 
 
 class TranslationRequest(BaseModel):

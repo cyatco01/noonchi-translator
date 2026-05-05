@@ -12,17 +12,15 @@ import { getBackend } from '../config/backends';
 /**
  * Set conversation context (Step 1 of translation flow)
  *
- * @param {string} situation - Free-text description of the social situation
- * @param {string} method - Which backend to use ('agent', 'papago_rules', 'ml_model')
- * @returns {Promise<Object>} Context response with session_id and formality_token
+ * @param {Object} contextData - Either { situation } or { relationship, age_differential, setting }
+ * @param {string} method - Which backend to use
+ * @returns {Promise<Object>} Context response with session_id, formality_token, reasoning, confidence
  */
-export const setContext = async (situation, method = 'agent') => {
+export const setContext = async (contextData, method = 'agent') => {
   const backend = getBackend(method);
 
   try {
-    const response = await axios.post(`${backend.baseURL}/api/set-context`, {
-      situation,
-    });
+    const response = await axios.post(`${backend.baseURL}/api/set-context`, contextData);
 
     return {
       success: true,

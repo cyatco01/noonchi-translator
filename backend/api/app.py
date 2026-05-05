@@ -99,7 +99,16 @@ async def set_context(request: ContextRequest):
         raise HTTPException(status_code=503, detail="Translation service not available")
 
     try:
-        context, explanation = parse_situation(context_parser_client, request.situation)
+        if request.situation:
+            context, reasoning, confidence = parse_situation(context_parser_client, request.situation)
+        else:
+            context = SocialContext(
+                relationship=request.relationship,
+                age_differential=request.age_differential,
+                setting=request.setting,
+            )
+            reasoning, confidence = None, None
+
         if request.formality_override:
             context.formality_override = request.formality_override
 
@@ -115,10 +124,13 @@ async def set_context(request: ContextRequest):
             formality_override=request.formality_override
         )
 
+        log_detail = reasoning if reasoning else f"{context.relationship.value}/{context.setting.value}"
         logger.info(
-            f"Context set — {explanation} "
+            f"Context set — {log_detail} "
             f"→ {formality_token.as_token()} [session={session.session_id}]"
         )
+
+        message = f"{reasoning} → {formality_token.as_token()}" if reasoning else formality_token.as_token()
 
         return ContextResponse(
             situation=request.situation,
@@ -128,7 +140,9 @@ async def set_context(request: ContextRequest):
             setting=context.setting,
             formality_token=formality_token,
             conditioning_input_prefix=formality_token.as_token(),
-            message=f"{explanation} → {formality_token.as_token()}"
+            message=message,
+            reasoning=reasoning,
+            confidence=confidence,
         )
 
     except ValueError as e:
