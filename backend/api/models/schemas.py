@@ -6,45 +6,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional
 from enum import Enum
 
-
-class RelationshipType(str, Enum):
-    """Speaker-addressee relationship types."""
-    BOSS = "boss"
-    ELDER = "elder"
-    PROFESSOR = "professor"
-    COLLEAGUE = "colleague"
-    PEER = "peer"
-    SUBORDINATE = "subordinate"
-    FRIEND = "friend"
-    ACQUAINTANCE = "acquaintance"
-    STRANGER = "stranger"
-
-
-class SettingType(str, Enum):
-    """Situational setting of the interaction."""
-    WORKPLACE = "workplace"
-    ACADEMIC = "academic"
-    SOCIAL = "social"
-    PUBLIC = "public"
-    INTIMATE = "intimate"
-
-
-class FormalityToken(str, Enum):
-    """
-    Three operative formality tokens used for conditioning.
-    These are prepended to the source sentence before passing to mBART.
-
-    <formal>  → 합쇼체 / 하십시오체  (-습니다 / -ㅂ니다)
-    <polite>  → 해요체               (-아요 / -어요)
-    <casual>  → 해라체 / 해체        (-아 / -어 / -냐)
-    """
-    FORMAL = "formal"
-    POLITE = "polite"
-    CASUAL = "casual"
-
-    def as_token(self) -> str:
-        """Return the conditioning token string used in model input."""
-        return f"<{self.value}>"
+from backend.formality.resolver import RelationshipType, SettingType, FormalityToken
 
 
 class FormalityLevel(str, Enum):
@@ -135,6 +97,7 @@ class ContextResponse(BaseModel):
         description="The token that will be prepended to source text, e.g. '<formal>'"
     )
     message: str
+    override_applied: bool = False
     reasoning: Optional[str] = None
     confidence: Optional[float] = None
 

@@ -23,6 +23,10 @@ SUFFIX_RULES: list[tuple[tuple[str, ...], str]] = [
 # Fallback: raw-text regex for when Mecab tags -요 as JX instead of EF
 _POLITE_FALLBACK = re.compile(r"요[.!?~\s]*$")
 
+# -지요 ends in 요 but Mecab returns bare '지' as EF, which would hit the casual
+# '-지' rule. Detect the surface form before falling through to label_formality.
+_JIJYO_PATTERN = re.compile(r"지요[.!?~\s]*$")
+
 
 def get_mecab() -> Mecab:
     global _mecab
@@ -58,6 +62,10 @@ def label_sentence(ko_sentence: str) -> str | None:
     """
     ef = extract_ef_morpheme(ko_sentence)
     if ef is not None:
+        # Mecab returns bare '지' as EF for -지요 endings. '지요' is a polite
+        # softening suffix (해요체-equivalent), not the casual plain '-지'.
+        if ef == "지" and _JIJYO_PATTERN.search(ko_sentence):
+            return "polite"
         return label_formality(ef)
 
     # Fallback for -요 sentences misparse by Mecab

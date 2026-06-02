@@ -73,7 +73,10 @@ def load_tatoeba(data_dir: str) -> list[tuple[str, str]]:
     eng_ids = {sid for sid, (lang, _) in sentences.items() if lang == "eng"}
     kor_ids = {sid for sid, (lang, _) in sentences.items() if lang == "kor"}
 
-    # Step 3: Walk links to find aligned EN–KR pairs
+    # Step 3: Walk links to find aligned EN–KR pairs.
+    # links.csv stores directed edges and commonly includes both (a→b) and (b→a)
+    # for the same pair. Dedup by (en_text, ko_text) to avoid double-counting.
+    seen: set[tuple[str, str]] = set()
     pairs: list[tuple[str, str]] = []
     with open(links_path, encoding="utf-8") as f:
         for line in f:
@@ -81,9 +84,14 @@ def load_tatoeba(data_dir: str) -> list[tuple[str, str]]:
             if len(parts) == 2:
                 a, b = parts
                 if a in eng_ids and b in kor_ids:
-                    pairs.append((sentences[a][1], sentences[b][1]))
+                    pair = (sentences[a][1], sentences[b][1])
                 elif a in kor_ids and b in eng_ids:
-                    pairs.append((sentences[b][1], sentences[a][1]))
+                    pair = (sentences[b][1], sentences[a][1])
+                else:
+                    continue
+                if pair not in seen:
+                    seen.add(pair)
+                    pairs.append(pair)
 
     logger.info(f"Tatoeba: loaded {len(pairs):,} EN–KR pairs")
     return pairs

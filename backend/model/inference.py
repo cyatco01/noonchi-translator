@@ -48,7 +48,7 @@ class MBartInference:
             output_ids = self.model.generate(
                 **inputs,
                 num_beams=4,
-                max_new_tokens=128,
+                max_new_tokens=200,
             )
 
         return self.tokenizer.decode(output_ids[0], skip_special_tokens=True)

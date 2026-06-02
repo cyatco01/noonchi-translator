@@ -12,6 +12,7 @@ Run from project root:
 import csv
 import json
 import logging
+import os
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -69,12 +70,25 @@ def main() -> None:
             f"formal class will reach {formal_count + len(to_add):,}, not {TARGET_FORMAL:,}"
         )
 
-    with open(TRAIN_TSV, "a", encoding="utf-8", newline="") as f:
-        writer = csv.writer(f, delimiter="\t")
-        writer.writerows(to_add)
+    # Write to a temp file on the same filesystem, then atomically replace train.tsv.
+    # A crash before os.replace leaves train.tsv untouched.
+    tmp_path = TRAIN_TSV.with_suffix(".tmp")
+    try:
+        with open(tmp_path, "w", encoding="utf-8", newline="") as out:
+            writer = csv.writer(out, delimiter="\t")
+            writer.writerow(["en", "ko", "formality"])
+            with open(TRAIN_TSV, encoding="utf-8", newline="") as src:
+                reader = csv.reader(src, delimiter="\t")
+                next(reader)  # skip original header
+                writer.writerows(reader)
+            writer.writerows(to_add)
+        os.replace(tmp_path, TRAIN_TSV)
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink(missing_ok=True)
 
     logger.info(
-        f"Appended {len(to_add):,} pairs → formal class now "
+        f"Merged {len(to_add):,} pairs → formal class now "
         f"{formal_count + len(to_add):,} in train.tsv"
     )
 

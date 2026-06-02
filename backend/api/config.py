@@ -26,6 +26,7 @@ class Settings:
 
     # Claude Model Configuration
     CLAUDE_MODEL: str = os.getenv('CLAUDE_MODEL', 'claude-sonnet-4-6')
+    CONTEXT_PARSE_MODEL: str = os.getenv('CONTEXT_PARSE_MODEL', 'claude-haiku-4-5-20251001')
     MAX_TOKENS: int = int(os.getenv('MAX_TOKENS', '4096'))
     TEMPERATURE: float = float(os.getenv('TEMPERATURE', '0.3'))  # Lower temp for consistent translations
 

@@ -8,9 +8,15 @@ inference endpoint will expose: receives a conditioned input string
 """
 
 import logging
+import sys
+from pathlib import Path
 from typing import Optional
 
 from anthropic import Anthropic
+
+# app.py runs from backend/api/ — insert project root so backend.formality is importable
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
+from backend.formality.resolver import FormalityResolver  # noqa: E402
 
 from config import get_settings
 from models.schemas import (
@@ -20,6 +26,7 @@ from models.schemas import (
     SocialContext,
     TranslationResponse
 )
+from rag.retriever import SociolinguisticRetriever
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +42,7 @@ def parse_situation(client: Anthropic, situation: str) -> tuple[SocialContext, s
         (SocialContext, reasoning, confidence)
     """
     response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
+        model=get_settings().CONTEXT_PARSE_MODEL,
         max_tokens=200,
         tools=[{
             "name": "extract_social_context",
@@ -84,68 +91,6 @@ def parse_situation(client: Anthropic, situation: str) -> tuple[SocialContext, s
     )
     return context, data["reasoning"], float(data["confidence"])
 
-logger = logging.getLogger(__name__)
-
-
-class FormalityResolver:
-    """
-    Rule-based pragmatic inference engine.
-
-    Maps structured social context (relationship, age_differential, setting)
-    to one of three operative formality tokens: <formal>, <polite>, <casual>.
-
-    Rules encode Korean sociolinguistic norms:
-    - Workplace superiors, professors, elders, public settings → <formal>
-    - Close friends, similar age, intimate/social settings → <casual>
-    - Default (acquaintances, colleagues, neutral settings) → <polite>
-    """
-
-    def resolve(self, context: SocialContext) -> FormalityToken:
-        """
-        Resolve social context to a formality token.
-
-        Args:
-            context: Structured social context from the user
-
-        Returns:
-            FormalityToken: formal, polite, or casual
-        """
-        if context.formality_override is not None:
-            return context.formality_override
-
-        rel = context.relationship
-        age_diff = context.age_differential
-        setting = context.setting
-
-        # --- Formal triggers ---
-        # Superior relationships always warrant formal register
-        if rel in (RelationshipType.BOSS, RelationshipType.PROFESSOR, RelationshipType.ELDER):
-            return FormalityToken.FORMAL
-
-        # Stranger in any setting, or any relationship in public → formal
-        if rel == RelationshipType.STRANGER or setting == SettingType.PUBLIC:
-            return FormalityToken.FORMAL
-
-        # Speaker is notably younger (age_diff < -5) in formal/professional setting
-        if age_diff < -5 and setting in (SettingType.WORKPLACE, SettingType.ACADEMIC):
-            return FormalityToken.FORMAL
-
-        # --- Casual triggers ---
-        # Friend + similar age + informal setting → casual
-        if rel == RelationshipType.FRIEND and age_diff >= -3 and setting in (
-            SettingType.INTIMATE, SettingType.SOCIAL
-        ):
-            return FormalityToken.CASUAL
-
-        # Subordinate in intimate/social setting, speaker notably older → casual
-        if rel == RelationshipType.SUBORDINATE and age_diff > 5 and setting in (
-            SettingType.INTIMATE, SettingType.SOCIAL
-        ):
-            return FormalityToken.CASUAL
-
-        # --- Default ---
-        return FormalityToken.POLITE
-
 
 class ClaudeTranslationAgent:
     """
@@ -181,6 +126,7 @@ class ClaudeTranslationAgent:
         self.client = Anthropic(api_key=self.settings.ANTHROPIC_API_KEY)
         self.model = self.settings.CLAUDE_MODEL
         self.resolver = FormalityResolver()
+        self.retriever = SociolinguisticRetriever()
         logger.info("Claude translation agent initialized")
 
     def resolve_formality(self, context: SocialContext) -> FormalityToken:
@@ -209,6 +155,15 @@ class ClaudeTranslationAgent:
         )
 
         guide = self.FORMALITY_GUIDE[formality_token]
+
+        retrieved = self.retriever.retrieve(text, formality_token.value)
+        if retrieved:
+            rag_block = "\n\nRelevant sociolinguistic notes:\n" + "\n".join(
+                f"- {note}" for note in retrieved
+            )
+        else:
+            rag_block = ""
+
         prompt = (
             f"You are a Korean translator. Translate the English text to Korean "
             f"using the specified speech level.\n\n"
@@ -216,6 +171,7 @@ class ClaudeTranslationAgent:
             f"Target speech level: {guide['level']}\n"
             f"Required sentence-final endings: {guide['endings']}\n"
             f"Notes: {guide['notes']}"
+            f"{rag_block}"
         )
 
         message = self.client.messages.create(

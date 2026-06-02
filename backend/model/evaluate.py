@@ -34,7 +34,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import DataCollatorForSeq2Seq
 
-from backend.evaluation.metrics import evaluate
+from backend.evaluation.metrics import evaluate, evaluate_by_class
 from backend.model.dataset import load_split
 from backend.model.train import TGT_LANG, load_model_and_tokenizer
 
@@ -116,8 +116,23 @@ def evaluate_model(
 
     print("\n=== Evaluation Results ===")
     for metric, value in results.items():
-        print(f"  {metric}: {value:.4f}")
+        if isinstance(value, int):
+            print(f"  {metric}: {value}")
+        else:
+            print(f"  {metric}: {value:.4f}")
     print("==========================\n")
+
+    per_class = evaluate_by_class(hypotheses, references, labels)
+    print("=== Per-Class Results ===")
+    for cls in ("formal", "polite", "casual"):
+        r = per_class.get(cls, {})
+        print(
+            f"  {cls:8} n={r.get('n', 0):,}  "
+            f"chrF={r.get('chrF', 0.0):.2f}  "
+            f"FA={r.get('formality_accuracy', 0.0):.3f}  "
+            f"unclassifiable={r.get('none_count', 0)}"
+        )
+    print("=========================\n")
     logger.info("Evaluation complete.")
 
     return results

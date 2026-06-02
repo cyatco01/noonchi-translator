@@ -107,14 +107,20 @@ def load_model_and_tokenizer(model_name: str = MODEL_NAME):
     return model, tokenizer
 
 
-def train(data_path: str, output_dir: str, max_rows: int | None = None, resume: bool = False) -> None:
+def train(
+    data_path: str,
+    output_dir: str,
+    max_rows: int | None = None,
+    val_max_rows: int | None = 2000,
+    resume: bool = False,
+) -> None:
     model, tokenizer = load_model_and_tokenizer()
 
     train_ds = load_split(data_path, tokenizer, max_rows=max_rows)
     val_path = str(Path(data_path).parent / "val.tsv")
-    # 2000-row eval subset keeps each epoch eval under ~2 min on T4.
-    # Full eval runs in Cell 8 after training.
-    val_ds = load_split(val_path, tokenizer, max_rows=2000)
+    # Default 2000-row eval subset keeps each epoch eval under ~2 min on T4.
+    # Pass val_max_rows=None (--val-max-rows 0) with a better GPU for stable metrics.
+    val_ds = load_split(val_path, tokenizer, max_rows=val_max_rows)
 
     logger.info(
         f"Dataset: {len(train_ds):,} train rows, {len(val_ds):,} val rows"
@@ -176,9 +182,22 @@ if __name__ == "__main__":
         help="Stratified sample size (default: use all rows). Use 50000 for Colab free T4.",
     )
     parser.add_argument(
+        "--val-max-rows",
+        type=int,
+        default=2000,
+        metavar="N",
+        help="Max rows for mid-training validation eval (default: 2000 for T4). Set to 0 for the full val set.",
+    )
+    parser.add_argument(
         "--resume",
         action="store_true",
         help="Resume from the latest checkpoint in the output directory.",
     )
     args = parser.parse_args()
-    train(args.data, args.output, max_rows=args.max_rows, resume=args.resume)
+    train(
+        args.data,
+        args.output,
+        max_rows=args.max_rows,
+        val_max_rows=args.val_max_rows or None,
+        resume=args.resume,
+    )

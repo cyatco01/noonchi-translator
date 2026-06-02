@@ -114,7 +114,7 @@ noonchi-translator/
 - The mBART pipeline (`data_pipeline/`, `model/`, `evaluation/`) needs to be built
 - GPU access is required for mBART fine-tuning (Colab, university cluster, or cloud)
 - `docs/IMPLEMENTATION_PLAN.md` has the detailed phase-by-phase build plan
-- `data/relationship_formality_map.json` has all 7 Korean speech levels + relationship mappings
+- `data/relationship_formality_map.json` documents all 7 Korean speech levels and relationship mappings — **reference material only**. The actual resolver rules live in `backend/formality/resolver.py`; the JSON is not loaded at runtime and may not reflect the current code.
 
 ---
 

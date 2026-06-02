@@ -1,192 +1,172 @@
 """
-Test script for the two-step translation flow.
+API integration tests for the two-step translation flow.
 
-Usage:
-    1. Start the server: python app.py
-    2. Run this script: python test_api.py
+Uses httpx.AsyncClient + LifespanManager so no live server is needed.
+The ClaudeTranslationAgent constructor does not make API calls, so the app
+starts normally with a fake key. Only translate() is mocked to avoid hitting
+the real Claude API during tests.
+
+Run: pytest tests/test_api.py -v
 """
 
-import requests
-import json
-from typing import Dict, Any
+import os
+# Must be set before any backend imports so config.py reads a non-empty key
+os.environ.setdefault("ANTHROPIC_API_KEY", "test-key-not-real")
+
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend", "api"))
+
+import pytest
+import httpx
+from unittest.mock import AsyncMock, patch
+from asgi_lifespan import LifespanManager
+
+import app as app_module
+from models.schemas import TranslationResponse, RelationshipType, FormalityToken
 
 
-BASE_URL = "http://localhost:8000"
+@pytest.fixture(scope="module")
+async def client():
+    """Start the app once per test module with proper lifespan handling."""
+    async with LifespanManager(app_module.app) as manager:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=manager.app),
+            base_url="http://test",
+        ) as c:
+            yield c
 
 
-def print_section(title: str):
-    print("\n" + "=" * 60)
-    print(f"  {title}")
-    print("=" * 60)
+def _fake_translation(
+    text: str = "Do you want to eat?",
+    formality: FormalityToken = FormalityToken.FORMAL,
+    translated: str = "드시겠습니까?",
+) -> TranslationResponse:
+    return TranslationResponse(
+        original_text=text,
+        conditioned_input=f"{formality.as_token()} {text}",
+        translated_text=translated,
+        formality_token=formality,
+        relationship=RelationshipType.BOSS,
+    )
 
 
-def print_json(data: Dict[Any, Any]):
-    print(json.dumps(data, indent=2, ensure_ascii=False))
+# ---------------------------------------------------------------------------
+# Health
+# ---------------------------------------------------------------------------
 
-
-def test_health():
-    print_section("Health Check")
-    response = requests.get(f"{BASE_URL}/health")
-    print(f"Status: {response.status_code}")
-    print_json(response.json())
+async def test_health(client):
+    response = await client.get("/health")
     assert response.status_code == 200
-    print("✓ Health check passed")
+    assert response.json()["status"] == "healthy"
 
 
-def test_two_step_flow():
-    """Test the complete two-step flow with a boss/workplace context."""
-    print_section("STEP 1: Set Context (boss, workplace, speaker younger)")
+# ---------------------------------------------------------------------------
+# Set-context — structured path (no API call, pure FormalityResolver)
+# ---------------------------------------------------------------------------
 
-    context_request = {
-        "relationship": "boss",
-        "age_differential": -10,
-        "setting": "workplace"
-    }
-    print("Request:")
-    print_json(context_request)
-
-    response = requests.post(f"{BASE_URL}/api/set-context", json=context_request)
-    print(f"\nStatus: {response.status_code}")
-    context_response = response.json()
-    print_json(context_response)
-
-    assert response.status_code == 200
-    session_id = context_response["session_id"]
-    print(f"\n✓ Context set → {context_response['conditioning_input_prefix']}")
-
-    print_section("STEP 2: Translate")
-    translation_request = {"session_id": session_id, "text": "Do you want to eat?"}
-    print("Request:")
-    print_json(translation_request)
-
-    response = requests.post(f"{BASE_URL}/api/translate", json=translation_request)
-    print(f"\nStatus: {response.status_code}")
-    result = response.json()
-    print_json(result)
-
-    assert response.status_code == 200
-    print(f"\n✓ Conditioned input: {result['conditioned_input']}")
-    print(f"  Korean output:     {result['translated_text']}")
-
-    return session_id
-
-
-def test_multiple_translations_same_session(session_id: str):
-    print_section("Multiple Translations — Same Session")
-
-    phrases = [
-        "Would you like some coffee?",
-        "Let's discuss the quarterly results.",
-        "Thank you for your time."
-    ]
-
-    for i, phrase in enumerate(phrases, 1):
-        print(f"\n[{i}] {phrase}")
-        response = requests.post(
-            f"{BASE_URL}/api/translate",
-            json={"session_id": session_id, "text": phrase}
-        )
-        if response.status_code == 200:
-            result = response.json()
-            print(f"    Conditioned: {result['conditioned_input']}")
-            print(f"    Korean:      {result['translated_text']}")
-        else:
-            print(f"    Error {response.status_code}: {response.json()}")
-
-
-def test_formality_levels():
-    """Show the same phrase across all three formality levels."""
-    print_section("Formality Comparison — Same Phrase, Three Contexts")
-
-    test_cases = [
-        {"relationship": "boss",     "age_differential": -10, "setting": "workplace",
-         "label": "FORMAL  (boss, workplace, speaker younger)"},
-        {"relationship": "colleague", "age_differential": 0,   "setting": "workplace",
-         "label": "POLITE  (colleague, workplace, same age)"},
-        {"relationship": "friend",    "age_differential": 0,   "setting": "intimate",
-         "label": "CASUAL  (friend, intimate, same age)"},
-    ]
-
-    phrase = "Do you want to eat?"
-
-    for case in test_cases:
-        label = case.pop("label")
-        print(f"\n--- {label} ---")
-
-        ctx_response = requests.post(f"{BASE_URL}/api/set-context", json=case).json()
-        session_id = ctx_response["session_id"]
-        token = ctx_response["conditioning_input_prefix"]
-        print(f"Token: {token}")
-
-        tr_response = requests.post(
-            f"{BASE_URL}/api/translate",
-            json={"session_id": session_id, "text": phrase}
-        ).json()
-
-        print(f"Input:  {tr_response['conditioned_input']}")
-        print(f"Output: {tr_response['translated_text']}")
-        if tr_response.get("romanization"):
-            print(f"Roman:  {tr_response['romanization']}")
-
-
-def test_formality_override():
-    """Test that formality_override takes precedence over inferred token."""
-    print_section("Formality Override")
-
-    context_request = {
+async def test_set_context_boss_workplace_resolves_formal(client):
+    response = await client.post("/api/set-context", json={
         "relationship": "boss",
         "age_differential": -10,
         "setting": "workplace",
-        "formality_override": "casual"
-    }
-    print("Context (boss/workplace but override=casual):")
-    print_json(context_request)
-
-    ctx_response = requests.post(f"{BASE_URL}/api/set-context", json=context_request).json()
-    print(f"\nResolved token: {ctx_response['conditioning_input_prefix']}")
-    assert ctx_response["formality_token"] == "casual", "Override should have taken effect"
-    print("✓ Override correctly applied")
+    })
+    assert response.status_code == 200
+    data = response.json()
+    assert data["formality_token"] == "formal"
+    assert data["conditioning_input_prefix"] == "<formal>"
+    assert "session_id" in data
 
 
-def test_invalid_session():
-    print_section("Error Handling — Invalid Session")
+async def test_set_context_colleague_resolves_polite(client):
+    response = await client.post("/api/set-context", json={
+        "relationship": "colleague",
+        "age_differential": 0,
+        "setting": "workplace",
+    })
+    assert response.status_code == 200
+    assert response.json()["formality_token"] == "polite"
 
-    response = requests.post(
-        f"{BASE_URL}/api/translate",
-        json={"session_id": "invalid-id", "text": "Hello"}
-    )
-    print(f"Status: {response.status_code}")
-    print_json(response.json())
+
+async def test_set_context_friend_intimate_resolves_casual(client):
+    response = await client.post("/api/set-context", json={
+        "relationship": "friend",
+        "age_differential": 0,
+        "setting": "intimate",
+    })
+    assert response.status_code == 200
+    assert response.json()["formality_token"] == "casual"
+
+
+async def test_formality_override_takes_precedence(client):
+    """formality_override should override the inferred token."""
+    response = await client.post("/api/set-context", json={
+        "relationship": "boss",
+        "age_differential": -10,
+        "setting": "workplace",
+        "formality_override": "casual",
+    })
+    assert response.status_code == 200
+    assert response.json()["formality_token"] == "casual"
+
+
+async def test_set_context_missing_fields_returns_422(client):
+    """Providing neither situation nor structured fields is rejected."""
+    response = await client.post("/api/set-context", json={})
+    assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Translate
+# ---------------------------------------------------------------------------
+
+async def test_invalid_session_returns_404(client):
+    response = await client.post("/api/translate", json={
+        "session_id": "00000000-0000-0000-0000-000000000000",
+        "text": "Hello",
+    })
     assert response.status_code == 404
-    print("✓ Correctly returned 404")
 
 
-def main():
-    print("\n" + "=" * 60)
-    print("  Noonchi Translator — API Test Suite")
-    print("=" * 60)
+async def test_two_step_flow(client):
+    """Full flow: set context → translate. translate() is mocked."""
+    ctx = await client.post("/api/set-context", json={
+        "relationship": "boss",
+        "age_differential": -10,
+        "setting": "workplace",
+    })
+    assert ctx.status_code == 200
+    session_id = ctx.json()["session_id"]
 
-    try:
-        test_health()
-        session_id = test_two_step_flow()
-        test_multiple_translations_same_session(session_id)
-        test_formality_levels()
-        test_formality_override()
-        test_invalid_session()
+    mock_result = _fake_translation("Do you want to eat?", FormalityToken.FORMAL, "드시겠습니까?")
+    with patch.object(
+        app_module.translation_agent, "translate", new=AsyncMock(return_value=mock_result)
+    ):
+        tr = await client.post("/api/translate", json={
+            "session_id": session_id,
+            "text": "Do you want to eat?",
+        })
 
-        print_section("All Tests Passed")
-        print("\nFlow: social context → FormalityResolver → <token> English → Korean")
-
-    except requests.exceptions.ConnectionError:
-        print("\n❌ Could not connect. Start the server first:")
-        print("   python app.py")
-    except AssertionError as e:
-        print(f"\n❌ Test failed: {e}")
-    except Exception as e:
-        print(f"\n❌ Unexpected error: {e}")
-        import traceback
-        traceback.print_exc()
+    assert tr.status_code == 200
+    data = tr.json()
+    assert data["translated_text"] == "드시겠습니까?"
+    assert data["formality_token"] == "formal"
+    assert data["conditioned_input"] == "<formal> Do you want to eat?"
 
 
-if __name__ == "__main__":
-    main()
+async def test_multiple_translations_reuse_session(client):
+    """Session stays valid across multiple translate calls."""
+    ctx = await client.post("/api/set-context", json={
+        "relationship": "friend",
+        "age_differential": 0,
+        "setting": "intimate",
+    })
+    session_id = ctx.json()["session_id"]
+
+    phrases = ["See you later.", "Are you hungry?", "Let's go."]
+    for phrase in phrases:
+        mock_result = _fake_translation(phrase, FormalityToken.CASUAL, "번역")
+        with patch.object(
+            app_module.translation_agent, "translate", new=AsyncMock(return_value=mock_result)
+        ):
+            tr = await client.post("/api/translate", json={"session_id": session_id, "text": phrase})
+        assert tr.status_code == 200

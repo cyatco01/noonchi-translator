@@ -15,7 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
 
 from backend.model.inference import MBartInference
-from agents.claude_agent import FormalityResolver
+from backend.formality.resolver import FormalityResolver  # noqa: E402
 from models.schemas import FormalityToken, SocialContext, TranslationResponse
 
 logger = logging.getLogger(__name__)

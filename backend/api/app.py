@@ -9,6 +9,14 @@ The Claude API backend acts as a prototype / comparison baseline.
 The same API contract will be satisfied by the fine-tuned mBART model.
 """
 
+import asyncio
+import sys
+from pathlib import Path
+
+# Ensure project root is importable so backend.formality.resolver is reachable
+# from schemas.py and any other module that needs it.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -56,7 +64,14 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize agent: {e}")
         raise
 
+    async def _cleanup_loop():
+        while True:
+            await asyncio.sleep(300)
+            get_session_manager().cleanup_expired_sessions()
+
+    cleanup_task = asyncio.create_task(_cleanup_loop())
     yield
+    cleanup_task.cancel()
     logger.info("Shutting down")
 
 
@@ -141,6 +156,7 @@ async def set_context(request: ContextRequest):
             formality_token=formality_token,
             conditioning_input_prefix=formality_token.as_token(),
             message=message,
+            override_applied=request.formality_override is not None,
             reasoning=reasoning,
             confidence=confidence,
         )

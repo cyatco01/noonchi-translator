@@ -97,10 +97,12 @@ def _stratified_sample(
 
     rng = random.Random(seed)
     per_class = n // len(by_class)
+    remainder = n % len(by_class)
     sampled: list[tuple[str, str, str]] = []
-    for class_rows in by_class.values():
+    for i, class_rows in enumerate(sorted(by_class.values(), key=lambda r: r[0][2])):
         rng.shuffle(class_rows)
-        sampled.extend(class_rows[:per_class])
+        take = per_class + (1 if i < remainder else 0)
+        sampled.extend(class_rows[:take])
 
     rng.shuffle(sampled)
     return sampled
