@@ -61,7 +61,7 @@ TRAINING_ARGS = {
     "warmup_steps": 500,
     "per_device_train_batch_size": 4,
     "gradient_accumulation_steps": 8,
-    "num_train_epochs": 3,
+    "num_train_epochs": 1,
     "eval_strategy": "epoch",
     "save_strategy": "steps",
     "save_steps": 5000,
